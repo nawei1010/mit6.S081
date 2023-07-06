@@ -93,10 +93,15 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
       memset(pagetable, 0, PGSIZE);
       *pte = PA2PTE(pagetable) | PTE_V;
     }
+    *pte |= PTE_A;
   }
   return &pagetable[PX(0, va)];
 }
 
+pte_t *
+mywalk(pagetable_t pagetable, uint64 va, int alloc){
+  return walk(pagetable, va, alloc);
+}
 // Look up a virtual address, return the physical address,
 // or 0 if not mapped.
 // Can only be used to look up user pages.
@@ -158,6 +163,31 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   }
   return 0;
 }
+
+void
+vmprint(pagetable_t pagetable)
+{
+  printf("page table %p\n", (uint64)pagetable);
+  printresult(pagetable, 1);
+}
+
+void
+printresult(pagetable_t pagetable, int level){
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if((pte & PTE_V)){
+      uint64 child = PTE2PA(pte);
+      printf("..");
+      for(int j = 1; j < level; j++){
+        printf(" ..");
+      }
+      printf("%d: pte %p pa %p\n", i, pte, child);
+      if (level < 3)
+        printresult((pagetable_t)child, level + 1);
+    }
+  }
+}
+
 
 // Remove npages of mappings starting from va. va must be
 // page-aligned. The mappings must exist.
