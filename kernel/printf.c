@@ -119,6 +119,7 @@ panic(char *s)
 {
   pr.locking = 0;
   printf("panic: ");
+  backtrace();
   printf(s);
   printf("\n");
   panicked = 1; // freeze uart output from other CPUs
@@ -131,4 +132,22 @@ printfinit(void)
 {
   initlock(&pr.lock, "pr");
   pr.locking = 1;
+}
+
+void
+backtrace(void)
+{
+  uint64* fp = (uint64*)r_fp();
+  // fp points the top of current frame
+  // fp - 8 -> return address
+  // fp - 16 -> previous frame
+  uint64* top = (uint64*)PGROUNDUP((uint64)fp);
+  uint64* bot = (uint64*)PGROUNDDOWN((uint64)fp);
+  
+  printf("backtrace:\n");
+  while(fp < top && fp > bot){
+    // - 1 means 8 bytes, because it is uint64
+    printf("%p\n", (uint64)*(fp-1));
+    fp = (uint64*)*(fp - 2);
+  }
 }
