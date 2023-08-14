@@ -297,34 +297,61 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 // physical memory.
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
-int
-uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
-
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
+    // 考虑只读页的拷贝,只读页不需要设置cow标记
+    if(*pte & PTE_W){
+        *pte &= (~PTE_W);
+        *pte |= PTE_COW;
+    }
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
       goto err;
     }
+    increment((void *)pa);
   }
   return 0;
 
- err:
+  err:
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
+}
+
+int uvmcowcopy(uint64 va, pagetable_t pagetable){
+  pte_t *pte;
+  if((pte = walk(pagetable, va, 0)) == 0)
+    panic("uvmcopy: pte should exist");
+  
+  uint64 pa = PTE2PA(*pte);
+  uint flags = PTE_FLAGS(*pte);
+  flags |= PTE_W;
+  flags &= (~PTE_COW);
+  char *mem;
+  if((mem = (char *)ref_alloc((void *)pa)) == 0)
+    return -1;
+  else{  
+    uvmunmap(pagetable, PGROUNDDOWN(va), 1, 0);
+    if(mappages(pagetable, va, PGSIZE, (uint64)mem, flags) != 0){
+      panic("uvmcowcopy: mappages");
+    }
+    return 0;
+  }
+}
+
+int check_cow(uint64 va, pagetable_t pagetable){
+  pte_t *pte;
+  return ((pte = walk(pagetable, va, 0)) != 0)
+         && (*pte & PTE_V) 
+         && (*pte & PTE_COW);
 }
 
 // mark a PTE invalid for user access.
@@ -347,9 +374,12 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
-
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+    if(check_cow(va0, pagetable)){
+      //page fault;
+      uvmcowcopy(va0, pagetable);
+    }
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
