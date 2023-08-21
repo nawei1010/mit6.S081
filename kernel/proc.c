@@ -374,6 +374,7 @@ exit(int status)
   release(&wait_lock);
 
   // Jump into the scheduler, never to return.
+  // never return, so not release(&p->lock)
   sched();
   panic("zombie exit");
 }
