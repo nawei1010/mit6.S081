@@ -69,6 +69,8 @@ balloc(uint dev)
 
   bp = 0;
   for(b = 0; b < sb.size; b += BPB){
+    //bp读取的其实是bitmap block，有不止一个bitmap block
+    //所以每次加上8 * 1024，相当于一个bitmap block包含的信息量
     bp = bread(dev, BBLOCK(b, sb));
     for(bi = 0; bi < BPB && b + bi < sb.size; bi++){
       m = 1 << (bi % 8);
@@ -77,7 +79,9 @@ balloc(uint dev)
         log_write(bp);
         brelse(bp);
         bzero(dev, b + bi);
-        return b + bi;
+        //返回的就是第一个空余的block的bit位置
+        //先 /8 获得是第几个byte，再%8，知道是该byte的第几个bit代表
+        return b + bi; 
       }
     }
     brelse(bp);
