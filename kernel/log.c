@@ -132,6 +132,7 @@ begin_op(void)
       sleep(&log, &log.lock);
     } else if(log.lh.n + (log.outstanding+1)*MAXOPBLOCKS > LOGSIZE){
       // this op might exhaust log space; wait for commit.
+      // 限制文件系统操作的数量，保证write ahead rule
       sleep(&log, &log.lock);
     } else {
       log.outstanding += 1;
@@ -228,7 +229,7 @@ log_write(struct buf *b)
   }
   log.lh.block[i] = b->blockno;
   if (i == log.lh.n) {  // Add new block to log?
-    bpin(b);
+    bpin(b); //将block固定在block cache中，不会被替换掉
     log.lh.n++;
   }
   release(&log.lock);
